@@ -211,6 +211,11 @@ def run_simulation(
     if enable_key_control:
         blocked_nodes = get_blocked_nodes(G, key_control_ratio)
 
+    # 后端兜底保护：若初始传播源类型为关键节点，则不对关键节点传播做限制
+    if source_type == "key" and enable_key_control:
+        enable_key_control = False
+        blocked_nodes = set()
+
     model_info = MODEL_REGISTRY[model_type]
     step_func = model_info["step"]
     states_list = model_info["states"]
@@ -218,6 +223,10 @@ def run_simulation(
     state = {node: "S" for node in G.nodes()}
 
     initial_node = choose_initial_node(G, blocked_nodes, source_type)
+
+    # 再次兜底：即使 initial_node 落在 blocked_nodes 中，也将其移出限制集合
+    blocked_nodes.discard(initial_node)
+
     state[initial_node] = "I"
 
     history = [state.copy()]
@@ -348,6 +357,11 @@ refutation_factor = st.sidebar.slider("辟谣后传播概率衰减系数", 0.1, 
 st.sidebar.subheader("关键节点干预设置")
 enable_key_control = st.sidebar.checkbox("限制关键节点传播", value=False, key="enable_key_control_checkbox")
 key_control_ratio = st.sidebar.slider("关键节点比例", 0.01, 0.20, 0.05, 0.01, key="key_control_ratio_slider")
+
+# 冲突保护：关键节点作为初始传播源时，不允许同时限制关键节点传播
+if source_type == "key" and enable_key_control:
+    st.sidebar.warning("已自动关闭“关键节点传播限制”：当初始传播源为关键节点时，两者不能同时生效。")
+    enable_key_control = False
 
 
 # =========================
