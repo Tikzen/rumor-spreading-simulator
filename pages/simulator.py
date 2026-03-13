@@ -24,38 +24,66 @@ from utils.exporter import build_export_zip
 # =========================
 def setup_matplotlib_font():
     """
-    修复 matplotlib 中文显示为方框的问题
-    优先选择 Windows 常见中文字体，其次回退到常见跨平台字体
+    修复 matplotlib 中文显示问题：
+    1. 优先加载项目内置字体文件
+    2. 若项目字体不存在，再回退系统中文字体
+    3. 最后才使用 DejaVu Sans
     """
+    current_dir = os.path.dirname(__file__)
+    project_root = os.path.dirname(current_dir)
+
+    font_candidates = [
+        os.path.join(project_root, "assets", "fonts", "NotoSansSC-Regular.ttf"),
+        os.path.join(project_root, "assets", "fonts", "NotoSansCJKsc-Regular.otf"),
+        os.path.join(project_root, "assets", "fonts", "SourceHanSansCN-Regular.otf"),
+    ]
+
+    # 1) 优先加载项目内字体文件
+    for font_path in font_candidates:
+        if os.path.exists(font_path):
+            try:
+                font_manager.fontManager.addfont(font_path)
+                font_prop = font_manager.FontProperties(fname=font_path)
+                font_name = font_prop.get_name()
+
+                mpl.rcParams["font.family"] = "sans-serif"
+                mpl.rcParams["font.sans-serif"] = [font_name]
+                mpl.rcParams["axes.unicode_minus"] = False
+
+                return f"{font_name} (from file)"
+            except Exception:
+                pass
+
+    # 2) 回退系统字体
     preferred_fonts = [
-        "Microsoft YaHei",      # Windows 常见
-        "SimHei",               # 黑体
-        "SimSun",               # 宋体
-        "KaiTi",                # 楷体
-        "FangSong",             # 仿宋
-        "Noto Sans CJK SC",     # Linux / 部分环境
-        "Source Han Sans SC",   # 思源黑体
-        "Arial Unicode MS",     # 兼容字体
-        "WenQuanYi Zen Hei",    # Linux 中文字体
-        "DejaVu Sans",          # 最后兜底
+        "Microsoft YaHei",
+        "SimHei",
+        "SimSun",
+        "KaiTi",
+        "FangSong",
+        "Noto Sans CJK SC",
+        "Noto Sans SC",
+        "Source Han Sans SC",
+        "Source Han Sans CN",
+        "Arial Unicode MS",
+        "WenQuanYi Zen Hei",
+        "DejaVu Sans",
     ]
 
     available_fonts = {f.name for f in font_manager.fontManager.ttflist}
 
-    selected_font = None
     for font_name in preferred_fonts:
         if font_name in available_fonts:
-            selected_font = font_name
-            break
+            mpl.rcParams["font.family"] = "sans-serif"
+            mpl.rcParams["font.sans-serif"] = [font_name]
+            mpl.rcParams["axes.unicode_minus"] = False
+            return f"{font_name} (system)"
 
-    if selected_font is None:
-        selected_font = "DejaVu Sans"
-
-    mpl.rcParams["font.sans-serif"] = [selected_font]
-    mpl.rcParams["axes.unicode_minus"] = False
+    # 3) 最终兜底
     mpl.rcParams["font.family"] = "sans-serif"
-
-    return selected_font
+    mpl.rcParams["font.sans-serif"] = ["DejaVu Sans"]
+    mpl.rcParams["axes.unicode_minus"] = False
+    return "DejaVu Sans (fallback)"
 
 
 SELECTED_FONT = setup_matplotlib_font()
