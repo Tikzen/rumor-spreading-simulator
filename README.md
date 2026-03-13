@@ -1,7 +1,7 @@
 ## Quick Start
 
 pip install -r requirements.txt
-streamlit run ui/app.py
+streamlit run ui/Home.py
 # Rumor Propagation Simulator  
 ## 社交网络谣言传播与干预策略模拟平台
 
@@ -192,4 +192,5 @@ model/README.md
 
 - 计算机设计大赛
 - 复杂网络研究
+
 - 信息传播模拟实验
