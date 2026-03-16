@@ -149,19 +149,48 @@ def get_state_color(state_value):
     return color_map.get(state_value, "purple")
 
 
-def draw_network_frame(G, state, pos, title="Network State", blocked_nodes=None):
+def draw_network_frame(G, state, pos, title="Network State", blocked_nodes=None, prev_state=None):
     if blocked_nodes is None:
         blocked_nodes = set()
 
     node_colors = []
     node_sizes = []
+    edgecolors = []
+    linewidths = []
 
     for node in G.nodes():
-        node_colors.append(get_state_color(state[node]))
-        node_sizes.append(120 if node in blocked_nodes else 50)
+        current_state = state[node]
+        previous_state = prev_state[node] if prev_state is not None and node in prev_state else None
+
+        # 本轮新增感染节点高亮
+        is_new_infected = (current_state == "I" and previous_state != "I")
+
+        if is_new_infected:
+            node_colors.append("gold")
+            node_sizes.append(220)
+            edgecolors.append("orange")
+            linewidths.append(2.0)
+        else:
+            node_colors.append(get_state_color(current_state))
+            if node in blocked_nodes:
+                node_sizes.append(120)
+                edgecolors.append("black")
+                linewidths.append(1.5)
+            else:
+                node_sizes.append(50)
+                edgecolors.append("none")
+                linewidths.append(0.0)
 
     fig, ax = plt.subplots(figsize=(6, 5))
-    nx.draw(G, pos, node_color=node_colors, node_size=node_sizes, ax=ax)
+    nx.draw(
+        G,
+        pos,
+        node_color=node_colors,
+        node_size=node_sizes,
+        edgecolors=edgecolors,
+        linewidths=linewidths,
+        ax=ax
+    )
     ax.set_title(title)
     return fig
 
@@ -171,6 +200,142 @@ def get_blocked_nodes(G, block_ratio):
     num_blocked = max(1, int(len(G.nodes()) * block_ratio))
     sorted_nodes = sorted(centrality, key=centrality.get, reverse=True)
     return set(sorted_nodes[:num_blocked])
+
+
+def count_new_infected_nodes(G, history, round_index):
+    if round_index == 0:
+        return sum(1 for node in G.nodes() if history[0][node] == "I")
+
+    prev_state = history[round_index - 1]
+    curr_state = history[round_index]
+
+    return sum(
+        1
+        for node in G.nodes()
+        if curr_state[node] == "I" and prev_state[node] != "I"
+    )
+
+
+def generate_experiment_report(
+    result,
+    model_type,
+    source_type_text,
+    num_nodes,
+    attach_edges,
+    infection_prob,
+    recovery_prob,
+    rounds,
+    seed,
+    enable_refutation,
+    refutation_round,
+    refutation_factor,
+    enable_key_control,
+    key_control_ratio,
+    comparison=None,
+    source_experiment=None,
+):
+    states_list = result["states_list"]
+
+    report_lines = []
+    report_lines.append("谣言传播模拟实验报告")
+    report_lines.append("=" * 30)
+    report_lines.append("")
+    report_lines.append("一、实验参数")
+    report_lines.append(f"传播模型：{model_type}")
+    report_lines.append(f"初始传播源类型：{source_type_text}")
+    report_lines.append(f"节点数量：{num_nodes}")
+    report_lines.append(f"每个新节点连接边数：{attach_edges}")
+    report_lines.append(f"传播概率：{infection_prob}")
+    report_lines.append(f"恢复概率：{recovery_prob}")
+    report_lines.append(f"传播轮数：{rounds}")
+    report_lines.append(f"随机种子：{seed}")
+    report_lines.append(f"启用辟谣机制：{'是' if enable_refutation else '否'}")
+    report_lines.append(f"辟谣开始轮次：{refutation_round}")
+    report_lines.append(f"辟谣后传播概率衰减系数：{refutation_factor}")
+    report_lines.append(f"启用关键节点限制：{'是' if enable_key_control else '否'}")
+    report_lines.append(f"关键节点比例：{key_control_ratio}")
+    report_lines.append("")
+
+    report_lines.append("二、实验结果")
+    report_lines.append(f"传播峰值人数：{result['peak_I']}")
+    report_lines.append(f"峰值出现轮次：第 {result['peak_round']} 轮")
+    report_lines.append(f"初始传播源节点：{result['initial_node']}")
+
+    if "R" in states_list:
+        report_lines.append(f"最终停止传播节点数：{result['final_R']}")
+        report_lines.append(f"最终停止传播比例：{result['final_ratio']:.2%}")
+
+    report_lines.append("")
+
+    report_lines.append("三、实验分析")
+    analysis_text = (
+        f"当前选择的传播模型为 {model_type}，"
+        f"初始传播源类型为 {source_type_text}。"
+        f"本次模拟中，谣言在第 {result['peak_round']} 轮达到传播峰值，"
+        f"峰值传播人数为 {result['peak_I']} 人。"
+    )
+
+    if "R" in states_list:
+        analysis_text += (
+            f"最终共有 {result['final_R']} 个节点停止传播，"
+            f"占总节点数的 {result['final_ratio']:.2%}。"
+        )
+
+    if comparison is not None:
+        baseline_peak = comparison["baseline"]["peak_I"]
+        refutation_peak = comparison["refutation"]["peak_I"]
+        key_control_peak = comparison["key_control"]["peak_I"]
+
+        analysis_text += (
+            f"在本组实验中，无干预场景的峰值为 {baseline_peak}，"
+            f"辟谣干预后的峰值为 {refutation_peak}，"
+            f"关键节点限制后的峰值为 {key_control_peak}。"
+        )
+
+        if key_control_peak < refutation_peak:
+            analysis_text += "结果表明，限制关键节点传播在当前网络结构下表现出更强的抑制效果。"
+        elif key_control_peak > refutation_peak:
+            analysis_text += "结果表明，辟谣干预在当前参数设置下表现出更强的抑制效果。"
+        else:
+            analysis_text += "结果表明，两种干预策略在当前参数设置下效果接近。"
+
+    if source_experiment is not None:
+        random_peak = source_experiment["random"]["peak_I"]
+        normal_peak = source_experiment["normal"]["peak_I"]
+        key_peak = source_experiment["key"]["peak_I"]
+
+        analysis_text += (
+            f"在传播源对比实验中，随机节点的峰值为 {random_peak}，"
+            f"普通节点的峰值为 {normal_peak}，"
+            f"关键节点的峰值为 {key_peak}。"
+        )
+
+        if key_peak >= random_peak and key_peak >= normal_peak:
+            analysis_text += "结果表明，从关键节点发起传播更容易引发大规模扩散，说明关键节点在无标度网络中具有显著的传播放大效应。"
+        elif normal_peak <= random_peak and normal_peak <= key_peak:
+            analysis_text += "结果表明，从普通节点发起传播时扩散范围相对较弱。"
+
+    report_lines.append(analysis_text)
+    report_lines.append("")
+
+    report_lines.append("四、实验结论")
+    if comparison is not None:
+        baseline_peak = comparison["baseline"]["peak_I"]
+        refutation_peak = comparison["refutation"]["peak_I"]
+        key_control_peak = comparison["key_control"]["peak_I"]
+
+        if key_control_peak < refutation_peak and key_control_peak < baseline_peak:
+            report_lines.append("关键节点限制策略在本次实验中效果最佳，能够更有效抑制谣言扩散。")
+        elif refutation_peak < key_control_peak and refutation_peak < baseline_peak:
+            report_lines.append("辟谣干预策略在本次实验中效果最佳，能够更有效降低传播峰值。")
+        else:
+            report_lines.append("无干预与干预策略差异不显著，建议进一步调整参数进行实验。")
+    else:
+        report_lines.append("当前实验完成了基础传播过程模拟，可用于观察谣言扩散规律。")
+
+    report_lines.append("本系统可用于复杂网络传播教学演示、谣言治理策略研究与信息传播实验分析。")
+
+    return "\n".join(report_lines)
 
 
 # =========================
@@ -552,6 +717,28 @@ else:
         col4.metric("当前模型", model_type)
 
     # =========================
+    # 生成实验报告
+    # =========================
+    experiment_report = generate_experiment_report(
+        result=result,
+        model_type=model_type,
+        source_type_text=source_type_text,
+        num_nodes=num_nodes,
+        attach_edges=attach_edges,
+        infection_prob=infection_prob,
+        recovery_prob=recovery_prob,
+        rounds=rounds,
+        seed=seed,
+        enable_refutation=enable_refutation,
+        refutation_round=refutation_round,
+        refutation_factor=refutation_factor,
+        enable_key_control=enable_key_control,
+        key_control_ratio=key_control_ratio,
+        comparison=comparison,
+        source_experiment=source_experiment,
+    )
+
+    # =========================
     # 一键导出
     # =========================
     export_params = {
@@ -570,15 +757,32 @@ else:
         "key_control_ratio": key_control_ratio,
     }
 
-    zip_data = build_export_zip(result, export_params)
-
-    st.download_button(
-        label="📦 一键导出实验结果",
-        data=zip_data,
-        file_name="rumor_simulation_result.zip",
-        mime="application/zip",
-        key="download_export_button"
+    zip_data = build_export_zip(
+        result,
+        export_params,
+        comparison_result=comparison,
+        source_experiment_result=source_experiment
     )
+
+    export_col1, export_col2 = st.columns(2)
+
+    with export_col1:
+        st.download_button(
+            label="📦 一键导出实验结果（En）",
+            data=zip_data,
+            file_name="rumor_simulation_result.zip",
+            mime="application/zip",
+            key="download_export_button"
+        )
+
+    with export_col2:
+        st.download_button(
+            label="📝 下载实验报告（En）",
+            data=experiment_report.encode("utf-8"),
+            file_name="experiment_report.txt",
+            mime="text/plain",
+            key="download_report_button"
+        )
 
     st.subheader(f"{model_type} 模型传播曲线")
     fig_curve, ax = plt.subplots(figsize=(8, 5))
@@ -648,12 +852,17 @@ else:
     pos = nx.spring_layout(G, seed=42)
 
     round_index = st.slider("查看传播轮次", 0, len(history) - 1, 0, 1, key="round_slider")
+    new_infected_count = count_new_infected_nodes(G, history, round_index)
+    st.metric("本轮新增感染节点", new_infected_count)
+
+    prev_state = history[round_index - 1] if round_index > 0 else None
     fig_network = draw_network_frame(
         G,
         history[round_index],
         pos,
         f"第{round_index}轮",
-        blocked_nodes=blocked_nodes
+        blocked_nodes=blocked_nodes,
+        prev_state=prev_state
     )
     st.pyplot(fig_network)
     plt.close(fig_network)
@@ -662,12 +871,15 @@ else:
         placeholder = st.empty()
 
         for i, state in enumerate(history):
+            prev_state = history[i - 1] if i > 0 else None
+
             fig = draw_network_frame(
                 G,
                 state,
                 pos,
                 f"第{i}轮",
-                blocked_nodes=blocked_nodes
+                blocked_nodes=blocked_nodes,
+                prev_state=prev_state
             )
             placeholder.pyplot(fig)
             plt.close(fig)
@@ -723,3 +935,6 @@ else:
             analysis_text += "结果表明，从普通节点发起传播时扩散范围相对较弱。"
 
     st.write(analysis_text)
+
+    st.subheader("实验报告")
+    st.text_area("自动生成实验报告", experiment_report, height=320)
