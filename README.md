@@ -1,7 +1,17 @@
+##
+基于本项目的差分升级版本现已推出
+https://github.com/Tikzen/Public-Opinion-Statistical-Modeling
+新增页面:
+Parameter Estimation：
+用于反演β与γ参数，提供多种拟合方式并自带归一化算法（依赖有所增加），参数调节方法与Simulator相同
+AI Analysis（此页面需要自行配置apikey）：
+提供了基础的数据抓取工具，支持从预设的网页（目前仅支持kaggle）抓取信息，AI会辅助数据处理与分析
+接入大模型 帮助分析参数，帮助另外两个页面的使用，并支持从Parameter Estimation中直接接收参数，提供可读性更强的分析并提供参数策略。
+#
 ## Quick Start
-
 pip install -r requirements.txt
 streamlit run Home.py
+
 # Rumor Propagation Simulator  
 ## 社交网络谣言传播与干预策略模拟平台
 
